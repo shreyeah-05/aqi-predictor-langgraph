@@ -82,8 +82,8 @@ def main():
     plt.close()
     print("\nSaved SHAP plot -> shap_feature_importance.png")
 
-    joblib.dump({"model": model, "features": FEATURES}, "aqi_model.joblib")
-    print("Saved model -> aqi_model.joblib")
+    joblib.dump({"model": model, "features": FEATURES}, "aqi_model.joblib", compress=3)
+    print("Saved model -> aqi_model.joblib (compressed, ~17MB)")
 
 
 if __name__ == "__main__":
