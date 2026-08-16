@@ -123,11 +123,20 @@ def explain(state: AQIState) -> AQIState:
         "no markdown headers."
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        contents=prompt,
-    )
-    return {**state, "explanation": response.text}
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=prompt,
+        )
+        explanation = response.text
+    except Exception as e:
+        # Covers missing/invalid API key, rate limits, and transient
+        # server-side issues (e.g. google.genai.errors.ServerError) --
+        # the app should still show the AQI prediction even if the
+        # explanation step fails.
+        explanation = f"Could not generate explanation: {e}"
+
+    return {**state, "explanation": explanation}
 
 
 def build_graph():
