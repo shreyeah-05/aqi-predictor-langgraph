@@ -19,6 +19,8 @@ from langgraph.graph import StateGraph, END
 from google import genai
 
 MODEL_PATH = "aqi_model.joblib"
+DATA_PATH = "aqi_dataset_real.csv"
+TRAIN_FEATURES = ["PM2.5", "PM10", "NO2", "SO2", "CO", "O3"]
 
 
 class AQIState(TypedDict):
@@ -29,9 +31,38 @@ class AQIState(TypedDict):
     explanation: Optional[str]
 
 
-_bundle = joblib.load(MODEL_PATH)
-MODEL = _bundle["model"]
-FEATURES = _bundle["features"]
+def _load_or_train_model():
+    """
+    Loads the saved model if present. If not (e.g. on a fresh deploy
+    where the ~57MB .joblib file wasn't pushed to GitHub), trains one
+    on the fly from aqi_dataset_real.csv -- takes a few seconds, and
+    means the app never depends on a large binary being in the repo.
+    """
+    if os.path.exists(MODEL_PATH):
+        bundle = joblib.load(MODEL_PATH)
+        return bundle["model"], bundle["features"]
+
+    from sklearn.ensemble import RandomForestRegressor
+
+    df = pd.read_csv(DATA_PATH)
+    X = df[TRAIN_FEATURES]
+    y = df["AQI"]
+
+    model = RandomForestRegressor(
+        n_estimators=300, max_depth=14, min_samples_leaf=2,
+        random_state=42, n_jobs=-1,
+    )
+    model.fit(X, y)
+
+    try:
+        joblib.dump({"model": model, "features": TRAIN_FEATURES}, MODEL_PATH)
+    except OSError:
+        pass  # read-only filesystem on some deploy platforms -- fine to skip
+
+    return model, TRAIN_FEATURES
+
+
+MODEL, FEATURES = _load_or_train_model()
 
 CATEGORY_RANGES = [
     (0, 50, "Good"),
