@@ -13,6 +13,7 @@ Run:
 
 import os
 import joblib
+import pandas as pd
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
 from google import genai
@@ -20,20 +21,14 @@ from google import genai
 MODEL_PATH = "aqi_model.joblib"
 
 
-# ---------------------------------------------------------------------
-# 1. State definition — this is what flows through every node
-# ---------------------------------------------------------------------
 class AQIState(TypedDict):
-    pollutants: dict          # input: {"PM2.5": .., "PM10": .., ...}
-    error: Optional[str]      # set if validation fails
+    pollutants: dict
+    error: Optional[str]
     predicted_aqi: Optional[float]
     category: Optional[str]
     explanation: Optional[str]
 
 
-# ---------------------------------------------------------------------
-# 2. Load the trained model once at import time
-# ---------------------------------------------------------------------
 _bundle = joblib.load(MODEL_PATH)
 MODEL = _bundle["model"]
 FEATURES = _bundle["features"]
@@ -55,27 +50,21 @@ def classify(aqi: float) -> str:
     return "Severe"
 
 
-# ---------------------------------------------------------------------
-# 3. Nodes
-# ---------------------------------------------------------------------
 def validate_input(state: AQIState) -> AQIState:
     pollutants = state.get("pollutants", {})
     missing = [f for f in FEATURES if f not in pollutants]
     if missing:
         return {**state, "error": f"Missing required pollutant readings: {missing}"}
-
     for f in FEATURES:
         val = pollutants[f]
         if not isinstance(val, (int, float)) or val < 0:
             return {**state, "error": f"Invalid value for {f}: {val} (must be a non-negative number)"}
-
     return {**state, "error": None}
 
 
 def predict_aqi(state: AQIState) -> AQIState:
     if state.get("error"):
         return state
-    import pandas as pd
     row = pd.DataFrame([[state["pollutants"][f] for f in FEATURES]], columns=FEATURES)
     pred = float(MODEL.predict(row)[0])
     return {**state, "predicted_aqi": round(pred, 1)}
@@ -91,7 +80,7 @@ def explain(state: AQIState) -> AQIState:
     if state.get("error"):
         return {**state, "explanation": f"Could not generate a prediction: {state['error']}"}
 
-    client = genai.Client()  # reads GEMINI_API_KEY from env
+    client = genai.Client()
     pollutant_summary = ", ".join(f"{k}: {v}" for k, v in state["pollutants"].items())
 
     prompt = (
@@ -107,13 +96,9 @@ def explain(state: AQIState) -> AQIState:
         model="gemini-3.5-flash",
         contents=prompt,
     )
-    text = response.text
-    return {**state, "explanation": text}
+    return {**state, "explanation": response.text}
 
 
-# ---------------------------------------------------------------------
-# 4. Build the graph
-# ---------------------------------------------------------------------
 def build_graph():
     graph = StateGraph(AQIState)
     graph.add_node("validate_input", validate_input)
@@ -130,23 +115,13 @@ def build_graph():
     return graph.compile()
 
 
-# ---------------------------------------------------------------------
-# 5. Demo run
-# ---------------------------------------------------------------------
 if __name__ == "__main__":
     app = build_graph()
-
     sample_reading = {
-        "PM2.5": 145.0,
-        "PM10": 210.0,
-        "NO2": 55.0,
-        "SO2": 18.0,
-        "CO": 1.8,
-        "O3": 60.0,
+        "PM2.5": 145.0, "PM10": 210.0, "NO2": 55.0,
+        "SO2": 18.0, "CO": 1.8, "O3": 60.0,
     }
-
     result = app.invoke({"pollutants": sample_reading})
-
     print("Input pollutants :", sample_reading)
     print("Predicted AQI    :", result["predicted_aqi"])
     print("Category         :", result["category"])
