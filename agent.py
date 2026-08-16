@@ -111,8 +111,11 @@ def explain(state: AQIState) -> AQIState:
     if state.get("error"):
         return {**state, "explanation": f"Could not generate a prediction: {state['error']}"}
 
-    pollutant_summary = ", ".join(f"{k}: {v}" for k, v in state["pollutants"].items())
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return {**state, "explanation": "Could not generate explanation: no GEMINI_API_KEY found in environment."}
 
+    pollutant_summary = ", ".join(f"{k}: {v}" for k, v in state["pollutants"].items())
     prompt = (
         f"Air quality readings: {pollutant_summary}. "
         f"Predicted AQI: {state['predicted_aqi']} ({state['category']} category, India CPCB scale). "
@@ -123,22 +126,17 @@ def explain(state: AQIState) -> AQIState:
     )
 
     try:
-        client = genai.Client()
+        client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model="gemini-3.5-flash",
             contents=prompt,
         )
-        explanation = response.text
+        text = response.text
+        if not text:
+            text = "Could not generate explanation: Gemini returned an empty response."
+        return {**state, "explanation": text}
     except Exception as e:
-        # Covers a missing/invalid API key (genai.Client() itself raises
-        # ValueError when no key is found), rate limits, and transient
-        # server-side issues (e.g. google.genai.errors.ServerError) --
-        # the app should still show the AQI prediction even if the
-        # explanation step fails.
-        print(f"[Gemini error] {type(e).__name__}: {e}")  # shows up in server/terminal logs
-        explanation = f"Could not generate explanation: {e}"
-
-    return {**state, "explanation": explanation}
+        return {**state, "explanation": f"Could not generate explanation: {type(e).__name__}: {e}"}
 
 
 def build_graph():
