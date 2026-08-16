@@ -41,23 +41,36 @@ POLLUTANT_CONFIG = {
 # ---------------------------------------------------------------------
 with st.sidebar:
     st.header("Settings")
-    env_key = os.environ.get("GEMINI_API_KEY", "")
+    # st.secrets is the most reliable way to read Community Cloud secrets;
+    # fall back to a regular env var for local runs, then to manual entry.
+    try:
+        default_key = st.secrets.get("GEMINI_API_KEY", "")
+    except Exception:
+        default_key = ""
+    if not default_key:
+        default_key = os.environ.get("GEMINI_API_KEY", "")
+
     api_key_input = st.text_input(
         "Gemini API key",
-        value=env_key,
+        value=default_key,
         type="password",
         help="Free, no card required — get one at aistudio.google.com",
     )
     if api_key_input:
         os.environ["GEMINI_API_KEY"] = api_key_input
 
+    st.caption(
+        "✅ Key detected" if os.environ.get("GEMINI_API_KEY") else "⚠️ No key detected yet"
+    )
+
     st.markdown("---")
     st.markdown(
         "**About**\n\n"
         "Predicts India's Air Quality Index (AQI) from pollutant readings "
-        "using a RandomForest model trained on India's CPCB breakpoint "
-        "formula, then explains the result with Google Gemini.\n\n"
-        "MAE: 2.79 AQI points · R²: 0.998"
+        "using a RandomForest model trained on real CPCB station data "
+        "(26 Indian cities, 2015-2020), then explains the result with "
+        "Google Gemini.\n\n"
+        "MAE: 21.9 AQI points · R²: 0.90"
     )
 
 # ---------------------------------------------------------------------
@@ -118,8 +131,4 @@ if predict_clicked:
         if explanation and "Could not generate" not in explanation:
             st.write(explanation)
         else:
-            st.info(
-                "Explanation unavailable (no API key set, or the request failed). "
-                "The AQI prediction above is still accurate — it comes from the "
-                "trained ML model, not the explanation step."
-            )
+            st.warning(explanation or "Explanation unavailable for an unknown reason.")
