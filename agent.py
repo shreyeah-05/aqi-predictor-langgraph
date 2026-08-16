@@ -134,6 +134,7 @@ def explain(state: AQIState) -> AQIState:
         # server-side issues (e.g. google.genai.errors.ServerError) --
         # the app should still show the AQI prediction even if the
         # explanation step fails.
+        print(f"[Gemini error] {type(e).__name__}: {e}")   # add this line
         explanation = f"Could not generate explanation: {e}"
 
     return {**state, "explanation": explanation}
