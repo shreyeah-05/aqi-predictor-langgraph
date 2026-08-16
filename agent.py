@@ -111,7 +111,6 @@ def explain(state: AQIState) -> AQIState:
     if state.get("error"):
         return {**state, "explanation": f"Could not generate a prediction: {state['error']}"}
 
-    client = genai.Client()
     pollutant_summary = ", ".join(f"{k}: {v}" for k, v in state["pollutants"].items())
 
     prompt = (
@@ -124,13 +123,15 @@ def explain(state: AQIState) -> AQIState:
     )
 
     try:
+        client = genai.Client()
         response = client.models.generate_content(
             model="gemini-3.5-flash",
             contents=prompt,
         )
         explanation = response.text
     except Exception as e:
-        # Covers missing/invalid API key, rate limits, and transient
+        # Covers a missing/invalid API key (genai.Client() itself raises
+        # ValueError when no key is found), rate limits, and transient
         # server-side issues (e.g. google.genai.errors.ServerError) --
         # the app should still show the AQI prediction even if the
         # explanation step fails.
